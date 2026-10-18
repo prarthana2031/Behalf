@@ -1,0 +1,14 @@
+# Local: docker compose up --build
+# Open http://localhost:3000
+
+services:
+  behalf:
+    build: .
+    image: behalf:latest
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
