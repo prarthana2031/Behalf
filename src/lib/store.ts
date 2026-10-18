@@ -14,6 +14,7 @@ export type DateRec = {
   id: string; a: string; b: string; turns: Turn[]; score: number; chemistry: string; friction: string; first_date: string;
   aWantsMore: boolean; bWantsMore: boolean; by: string; aInitialScore?: number; bInitialScore?: number;
   aFinalScore?: number; bFinalScore?: number; openQuestion?: string; disagreementReason?: string;
+  aChangeReason?: string; bChangeReason?: string;
 };
 export type Rank = { id: string; score: number; dated: boolean; dateId?: string; wantsMore: boolean | null };
 

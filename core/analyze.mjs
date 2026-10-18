@@ -1,4 +1,4 @@
-import { askJSON } from "./llm.mjs";
+import { askJSON, llmProvider } from "./llm.mjs";
 import { readLinkedIn, readInstagram, parseLinkedIn, parseInstagram } from "./scrape.mjs";
 
 const SYSTEM = `You are a person's dating agent. You have read exactly two sources about them: their public LinkedIn and public Instagram. Build their profile.
@@ -38,6 +38,6 @@ export async function readPerson(linkedinUrl, instagramUrl, { requireLlm = false
   const id = (parseLinkedIn(linkedinUrl) || parseInstagram(instagramUrl)).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return {
     id, linkedin: linkedinUrl, instagram: instagramUrl, ...profile,
-    sources: { linkedin: li.via, instagram: ig.via }, analyzedBy: llm ? "claude" : "keyword-fallback", readAt: new Date().toISOString(),
+    sources: { linkedin: li.via, instagram: ig.via }, analyzedBy: llm ? llmProvider() : "keyword-fallback", readAt: new Date().toISOString(),
   };
 }

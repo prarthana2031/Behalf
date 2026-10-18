@@ -20,6 +20,15 @@ function comparable(values: string[] = []) {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
+function sharedValues(first: string[] = [], second: string[] = []) {
+  const secondSet = new Set(second.map((value) => value.toLowerCase()));
+  return first.filter((value) => secondSet.has(value.toLowerCase()));
+}
+
+function tagsText(values: string[] = []) {
+  return values.length ? values.join(", ") : "Not available in this profile analysis";
+}
+
 export default function DateBrief({ a, b, date, people, rankings }: { a: Person; b: Person; date: DateRec; people: Person[]; rankings: Record<string, Rank[]> }) {
   const groups: SignalGroup[] = [
     { label: "interest", first: comparable(a.interests), second: comparable(b.interests) },
@@ -37,12 +46,25 @@ export default function DateBrief({ a, b, date, people, rankings }: { a: Person;
   const bNeed = b.needs?.find((need) => !a.qualities?.some((quality) => quality.toLowerCase() === need.toLowerCase()));
   const exploringPerson = aNeed ? a : bNeed ? b : undefined;
   const need = aNeed || bNeed;
-  const other = exploringPerson?.id === a.id ? b : a;
   const hasLimitedSignal = date.by === "keyword-fallback" || [a, b].some((person) => person.confidence === "low" || person.analyzedBy === "keyword-fallback");
+  const interestOverlap = sharedValues(a.interests, b.interests);
+  const hobbyOverlap = sharedValues(a.hobbies, b.hobbies);
+  const valueOverlap = sharedValues(a.values, b.values);
+  const needsA = comparable(a.needs), needsB = comparable(b.needs);
+  const supportedA = needsA.filter((item) => b.qualities?.some((quality) => quality.toLowerCase() === item.toLowerCase()));
+  const supportedB = needsB.filter((item) => a.qualities?.some((quality) => quality.toLowerCase() === item.toLowerCase()));
+  const xray = [
+    { label: "Interests", a: tagsText(a.interests), b: tagsText(b.interests), shared: interestOverlap, unknown: !a.interests?.length || !b.interests?.length, evidence: true },
+    { label: "Lifestyle · hobbies", a: tagsText(a.hobbies), b: tagsText(b.hobbies), shared: hobbyOverlap, unknown: !a.hobbies?.length || !b.hobbies?.length, evidence: true },
+    { label: "Values", a: tagsText(a.values), b: tagsText(b.values), shared: valueOverlap, unknown: !a.values?.length || !b.values?.length, evidence: true },
+    { label: "Needs ↔ strengths", a: `Needs: ${tagsText(needsA)} · supported by ${b.name}: ${tagsText(supportedA)}`, b: `Needs: ${tagsText(needsB)} · supported by ${a.name}: ${tagsText(supportedB)}`, shared: [...supportedA, ...supportedB], unknown: !needsA.length || !needsB.length, evidence: false },
+    { label: "Communication style", a: "Not stated in the available profile fields", b: "Not stated in the available profile fields", shared: [], unknown: true, evidence: false },
+    { label: "Relationship direction", a: a.looking_for ? `Agent inference: ${a.looking_for}` : "No profile inference available", b: b.looking_for ? `Agent inference: ${b.looking_for}` : "No profile inference available", shared: [], unknown: !a.looking_for || !b.looking_for, evidence: false },
+  ];
   const profileFit = chemistry(a, b).pre;
   const assessments = [
-    { person: a, initial: date.aInitialScore ?? profileFit, final: date.aFinalScore ?? (date.by === "keyword-fallback" ? profileFit : date.score), wantsMore: date.aWantsMore, other: b },
-    { person: b, initial: date.bInitialScore ?? profileFit, final: date.bFinalScore ?? (date.by === "keyword-fallback" ? profileFit : date.score), wantsMore: date.bWantsMore, other: a },
+    { person: a, initial: date.aInitialScore ?? profileFit, final: date.aFinalScore ?? (date.by === "keyword-fallback" ? profileFit : date.score), wantsMore: date.aWantsMore, other: b, changeReason: date.aChangeReason || "No change explanation was recorded." },
+    { person: b, initial: date.bInitialScore ?? profileFit, final: date.bFinalScore ?? (date.by === "keyword-fallback" ? profileFit : date.score), wantsMore: date.bWantsMore, other: a, changeReason: date.bChangeReason || "No change explanation was recorded." },
   ];
   const rankFor = (person: Person, match: Person, initial: boolean) => {
     if (!initial) {
@@ -94,6 +116,20 @@ export default function DateBrief({ a, b, date, people, rankings }: { a: Person;
           <p className="hint">An opening suggestion, not a prediction.</p>
         </div>
       </div>
+      <div className="xray" aria-label="Compatibility X-Ray">
+        <div className="xray-heading"><div><span className="brief-label">Evidence map</span><h3>Compatibility X-Ray</h3></div><span className="hint">Profile signals are clues, not proof of fit.</span></div>
+        <div className="xray-rows">
+          {xray.map((row) => (
+            <article className="xray-row" key={row.label}>
+              <div className="xray-dimension"><strong>{row.label}</strong><span className={`xray-status ${row.unknown ? "unknown" : row.shared.length ? "signal" : "open"}`}>{row.unknown ? "Unknown" : row.shared.length ? "Shared signal" : "No overlap in extracted tags"}</span></div>
+              <div className="xray-person"><b>{a.name}</b><span>{row.a}</span>{row.evidence && row.shared.slice(0, 1).map((value) => { const evidence = evidenceFor(a, value); return <small key={value}>{evidence.source}: “{evidence.text}”</small>; })}</div>
+              <div className="xray-person"><b>{b.name}</b><span>{row.b}</span>{row.evidence && row.shared.slice(0, 1).map((value) => { const evidence = evidenceFor(b, value); return <small key={value}>{evidence.source}: “{evidence.text}”</small>; })}</div>
+              {row.shared.length > 1 && <p className="xray-shared">Shared: {row.shared.join(", ")}</p>}
+            </article>
+          ))}
+        </div>
+        <p className="xray-note">“No overlap in extracted tags” means the profiles did not establish a match on that dimension; it is not evidence of incompatibility. Needs and strengths are agent interpretations; relationship direction is inference, not a direct quote.</p>
+      </div>
       <div className="assessment-heading"><span className="brief-label">Beliefs before and after the conversation</span><span className="hint">Initial scores use profile signals; final scores use the saved date assessment.</span></div>
       <div className="assessment-grid">
         {assessments.map((assessment) => {
@@ -105,6 +141,7 @@ export default function DateBrief({ a, b, date, people, rankings }: { a: Person;
               <div className="assessment-card-heading"><strong>{assessment.person.name}’s agent</strong><span>{assessment.wantsMore ? "Continue exploring" : "Pass"}</span></div>
               <div className="assessment-scores"><span>Initial <b>{assessment.initial}</b></span><span aria-hidden="true">→</span><span>Final <b>{assessment.final}</b></span></div>
               <div className="bar"><i style={{ width: `${Math.max(0, Math.min(100, assessment.final))}%` }} /></div>
+              <p className="assessment-rationale">{assessment.changeReason}</p>
               <p className="assessment-rank">Match rank: #{startRank ?? "—"} → #{endRank ?? "—"}{date.by === "keyword-fallback" ? " · unchanged; scripted exchange adds no evidence" : rankChange < 0 ? ` · up ${Math.abs(rankChange)}` : rankChange > 0 ? ` · down ${rankChange}` : " · unchanged"}</p>
             </article>
           );

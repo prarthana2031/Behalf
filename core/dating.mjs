@@ -1,4 +1,4 @@
-import { askJSON } from "./llm.mjs";
+import { askJSON, llmProvider } from "./llm.mjs";
 
 const set = (a) => new Set((a || []).map((x) => x.toLowerCase()));
 const overlap = (a, b) => [...set(a)].filter((x) => set(b).has(x));
@@ -52,8 +52,9 @@ export async function runDate(a, b, { requireLlm = false } = {}) {
   const slim = (p) => ({ name: p.name, headline: p.headline, summary: p.summary, needs: p.needs, hobbies: p.hobbies, interests: p.interests, qualities: p.qualities, values: p.values, looking_for: p.looking_for, dealbreakers: p.dealbreakers, evidence: p.evidence, confidence: p.confidence, confidence_note: p.confidence_note });
   const llm = await askJSON(
     `Two dating agents represent one person each. They know only the two supplied public-profile summaries and evidence. Run four rounds with two turns each: First impressions; A question that matters; Difference or unknown; Revised judgment. Label every turn with its round.
-Do not invent personal facts or answer a question unless the supplied evidence supports it. An agent must say "unknown" when the source is silent; an unlisted preference is not a conflict. Each agent starts with an independent profile-only fit score, asks one targeted question about an unresolved need, considers one evidence-backed difference without treating it as automatically negative, then gives an independent final score and verdict. Do not claim the simulation discovered new biographical facts.
-JSON: {"turns":[{"from":"a"|"b","round":"First impressions"|"A question that matters"|"Difference or unknown"|"Revised judgment","text":"..."}], "score":0-100, "chemistry":"...", "friction":"...", "first_date":"...", "a_initial_score":0-100, "b_initial_score":0-100, "a_final_score":0-100, "b_final_score":0-100, "open_question":"one question that could change the judgment", "disagreement_reason":"explain differing verdicts or say the agents agree", "a_wants_more":true|false, "b_wants_more":true|false}`,
+  Each reply must respond to the immediately preceding turn before raising a follow-up. In round two, Agent A asks a targeted question about an unresolved need; Agent B answers only if their supplied evidence supports an answer, otherwise says it is unknown. Agent A then asks one adaptive follow-up based on that answer or the missing information. In round three, Agent B raises one evidence-backed difference or asks about an unresolved point, and Agent A responds using only supplied evidence. In round four, both independently state initial score, final score, verdict, and what in the conversation changed or did not change their judgment.
+  Do not invent personal facts or answer a question unless the supplied evidence supports it. An agent must say "unknown" when the source is silent; an unlisted preference is not a conflict. Each agent starts with an independent profile-only fit score, considers differences without treating them as automatically negative, and never claims the simulation discovered new biographical facts. If the two agents disagree, explain whether it comes from different priorities, different readings of the same evidence, or insufficient evidence; never force consensus.
+  JSON: {"turns":[{"from":"a"|"b","round":"First impressions"|"A question that matters"|"Difference or unknown"|"Revised judgment","text":"..."}], "score":0-100, "chemistry":"...", "friction":"...", "first_date":"...", "a_initial_score":0-100, "b_initial_score":0-100, "a_final_score":0-100, "b_final_score":0-100, "a_change_reason":"what evidence changed the view, or that none did", "b_change_reason":"what evidence changed the view, or that none did", "open_question":"one question that could change the judgment", "disagreement_reason":"explain different verdicts, priorities or say what remains unresolved", "a_wants_more":true|false, "b_wants_more":true|false}`,
     JSON.stringify({ agent_a: slim(a), agent_b: slim(b), prescore: pre }), 2200);
   if (requireLlm && !llm?.turns?.length) throw new Error("Claude date generation failed; configure ANTHROPIC_API_KEY and retry");
   if (llm?.turns?.length) {
@@ -62,7 +63,9 @@ JSON: {"turns":[{"from":"a"|"b","round":"First impressions"|"A question that mat
       friction: llm.friction, first_date: llm.first_date, aWantsMore: llm.a_wants_more, bWantsMore: llm.b_wants_more,
       aInitialScore: llm.a_initial_score ?? pre, bInitialScore: llm.b_initial_score ?? pre,
       aFinalScore: llm.a_final_score ?? llm.score, bFinalScore: llm.b_final_score ?? llm.score,
-      openQuestion: llm.open_question, disagreementReason: llm.disagreement_reason, by: "claude",
+      openQuestion: llm.open_question, disagreementReason: llm.disagreement_reason,
+      aChangeReason: llm.a_change_reason || "No change explanation was returned.",
+      bChangeReason: llm.b_change_reason || "No change explanation was returned.", by: llmProvider(),
     };
   }
   const score = Math.max(15, Math.min(97, pre + (overlap(a.needs, b.qualities).length + overlap(b.needs, a.qualities).length) * 4 - (overlap(a.dealbreakers, b.qualities).length + overlap(b.dealbreakers, a.qualities).length) * 15));
@@ -75,6 +78,8 @@ JSON: {"turns":[{"from":"a"|"b","round":"First impressions"|"A question that mat
     aInitialScore: pre, bInitialScore: pre, aFinalScore: pre, bFinalScore: pre,
     openQuestion: (a.needs || [])[0] ? `How does ${(a.needs || [])[0]} show up in everyday life, and what would help ${first(a)} recognize it?` : `What does a good ordinary weekend look like for ${first(a)} and ${first(b)}?`,
     disagreementReason: score >= 60 ? "Both agents favour continuing; the underlying profile evidence remains limited." : "Both agents pass on this profile-only fit; missing information is not treated as a conflict.",
+    aChangeReason: "No new biographical evidence was learned in the scripted exchange; initial view held.",
+    bChangeReason: "No new biographical evidence was learned in the scripted exchange; initial view held.",
     by: "keyword-fallback",
   };
   result.turns = scripted(a, b, shared, pre, result);
@@ -89,8 +94,9 @@ export function rank(people, dates) {
     out[p.id] = people.filter((q) => q.id !== p.id).map((q) => {
       const d = byPair.get([p.id, q.id].sort().join("|"));
       const pre = chemistry(p, q).pre;
-      const mine = d ? (d.a === p.id ? d.aWantsMore : d.bWantsMore) : null;
-      return { id: q.id, score: d ? Math.round(0.35 * pre + 0.65 * d.score) : Math.round(pre * 0.85), dated: Boolean(d), dateId: d?.id, wantsMore: mine };
+      const myVerdict = d ? (d.a === p.id ? d.aWantsMore : d.bWantsMore) : null;
+      const myAssessment = d ? (d.a === p.id ? d.aFinalScore : d.bFinalScore) ?? d.score : null;
+      return { id: q.id, score: d ? Math.round(0.35 * pre + 0.65 * myAssessment) : Math.round(pre * 0.85), dated: Boolean(d), dateId: d?.id, wantsMore: myVerdict };
     }).sort((x, y) => y.score - x.score);
   }
   return out;

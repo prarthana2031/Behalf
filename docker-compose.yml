@@ -1,14 +1,36 @@
-# Local: docker compose up --build
-# Open http://localhost:3000
-
 services:
-  behalf:
-    build: .
-    image: behalf:latest
-    ports:
-      - "3000:3000"
+  ollama:
+    image: ollama/ollama:latest
     restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:3000"
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - HOSTNAME=0.0.0.0
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+      APIFY_TOKEN: ${APIFY_TOKEN:-}
+      DATA_DIR: /app/data
+    volumes:
+      - behalf-data:/app/data
+
+volumes:
+  ollama-models:
+  behalf-data:

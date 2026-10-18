@@ -25,7 +25,21 @@ Add one person per row in `data/people-25.csv` with `name`, `linkedin_url`, and 
 ## Run
 `npm install && npm run build && npm start` or `docker compose up --build`.
 
+## Run with Ollama
+Install Ollama and pull a local model such as `qwen2.5:3b`, then set `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://127.0.0.1:11434`, and `OLLAMA_MODEL=qwen2.5:3b` before starting the app. In Docker Compose, the app uses the private `ollama:11434` service address; Ollama's port is not published to the host. Pull the model once with `docker compose exec ollama ollama pull qwen2.5:3b`.
+
+For a quick AWS demo without a hosted model API:
+
+1. Launch one Ubuntu EC2 instance with at least 8 GiB RAM and 30 GiB encrypted EBS. A small 3B model is appropriate for CPU-only inference; larger models need substantially more RAM or a GPU. Avoid burstable T instances for sustained inference because CPU-credit charges/throttling can surprise you.
+2. Install Docker Engine and the Compose plugin, clone this repository, then `cd behalf-next`.
+3. Create a private `.env` file on the instance (never commit it) with `OLLAMA_MODEL=qwen2.5:3b` and, optionally, `APIFY_TOKEN=...` for richer public-profile extraction.
+4. Run `docker compose up -d --build`, then `docker compose exec ollama ollama pull qwen2.5:3b`.
+5. Securely copy `data/people-25.csv` onto the instance, then run `docker compose cp data/people-25.csv web:/app/data/people-25.csv` and `docker compose exec web node scripts/ingest.mjs`.
+6. Open TCP 3000 only to the demo audience's IP while testing. Do not open 11434. For a public production URL, put HTTPS/auth in front of the web container and create a budget alert first.
+
+The web and Ollama containers communicate on a private Compose network; model weights and runtime data use persistent Docker volumes. Ollama requires no Anthropic API key. Do not use the App Runner config for new deployments: AWS App Runner closed to new customers in April 2026. AWS credits may not cover every charge; check eligibility, region pricing and credit expiry in Billing.
+
 ## Submission text
 Overall (186/200): Behalf: every person gets an agent that reads their public LinkedIn + Instagram, writes a profile, dates other agents on their behalf, then ranks who fits. Two MCP servers, Next.js site.
 
-Technical (357/500): Two MCP servers (stdio, MCP SDK) behind a Next.js 15 host. Reader: Apify actors (Instagram profile scraper and LinkedIn profile scraper), with public LinkedIn metadata as fallback; private or unverified Instagram profiles are rejected. Claude analyzes both sources into needs/hobbies/interests/qualities with evidence, then generates each agent date. JSON store; Docker, AWS App Runner.
+Technical (357/500): Next.js 15 app with two standalone MCP servers. Apify can read the supplied public LinkedIn and Instagram profiles; without it, labeled public-page/handle fallbacks are used. Claude or local Ollama analyzes source evidence and generates four-round agent conversations with individual judgments. JSON store; Docker Compose; deployable to a single EC2 host with the Ollama service kept private.

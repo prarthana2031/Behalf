@@ -6,4 +6,6 @@ node_modules
 .env*
 Dockerfile*
 docker-compose*
+data/*.json
+data/people-*.csv
 .DS_Store

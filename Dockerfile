@@ -8,6 +8,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN mkdir -p /app/data
 RUN npm run build
 
 FROM node:20-alpine AS runner
@@ -17,10 +18,12 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+RUN mkdir -p /app/runtime-data && chown nextjs:nodejs /app/runtime-data
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/mcp ./mcp
 COPY --from=builder /app/core ./core
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
