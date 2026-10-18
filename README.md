@@ -20,7 +20,7 @@ The Next.js app is an MCP host: API routes spawn these over stdio. Both also run
 Without these keys, the app uses public-page metadata or handle-level fallbacks, followed by keyword analysis and scripted dates. These results are labeled as fallbacks in the profile and date pages. Instagram profiles explicitly reported as private are rejected.
 
 ## Load real people
-Add one person per row in `data/people-25.csv` with `name`, `linkedin_url`, and `instagram_url` columns (public profiles only). The `status` column is informational. From `behalf-next`, run `npm run ingest`; credentials improve extraction and analysis but are optional. Ingestion requires at least 25 valid profiles and stops without replacing the current JSON if that check fails. The generated `people.json`, `dates.json`, and `rankings.json` power the app pages. `npm run sample` regenerates fictional sample personas instead.
+Add one person per row in `data/people-25.csv` with `name`, `linkedin_url`, and `instagram_url` columns (public profiles only). The `status` column is informational. `npm run build` automatically runs ingestion before building the site, so Vercel includes the generated roster in its deployment. For local development, run `npm run ingest` after changing the CSV. Credentials improve extraction and analysis but are optional. Ingestion requires at least 25 valid profiles and stops without replacing the current JSON if that check fails. The generated `people.json`, `dates.json`, and `rankings.json` power the app pages. `npm run sample` regenerates fictional sample personas instead.
 
 ## Run
 `npm install && npm run build && npm start` or `docker compose up --build`.
